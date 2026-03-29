@@ -8,7 +8,9 @@
     "start": "node server.js",
     "start:web": "node server.js",
     "start:desktop": "node scripts/start-electron.js",
-    "dist:win": "node scripts/package-desktop.js"
+    "dist": "node scripts/package-desktop.js",
+    "dist:win": "node scripts/package-desktop.js win",
+    "dist:mac": "node scripts/package-desktop.js mac"
   },
   "build": {
     "appId": "com.codex.apple-media-converter",
@@ -21,14 +23,31 @@
       "desktop/**/*",
       "media-core.js",
       "public/**/*",
+      "scripts/**/*",
       "server.js",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "target": [
         "portable",
         "nsis"
       ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
     }
   },
   "devDependencies": {

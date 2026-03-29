@@ -1,2 +1,5 @@
-dist/
 node_modules/
+dist/
+desktop-debug.log
+bin/ffmpeg
+bin/ffmpeg.exe

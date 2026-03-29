@@ -102,20 +102,45 @@ function getLocalFfmpegCandidates() {
   }
 
   if (process.execPath) {
-    candidates.push(path.join(path.dirname(process.execPath), "bin", exe));
+    const execDir = path.dirname(process.execPath);
+    if (process.platform === "darwin") {
+      candidates.push(path.join(execDir, "..", "Resources", "bin", exe));
+    } else {
+      candidates.push(path.join(execDir, "bin", exe));
+    }
   }
 
   candidates.push(path.join(__dirname, "bin", exe));
   return uniq(candidates);
 }
 
-async function findInWindowsPath(commandName) {
-  if (process.platform !== "win32") {
-    return null;
+function getCommonFfmpegCandidates() {
+  if (process.platform === "darwin") {
+    return [
+      "/opt/homebrew/bin/ffmpeg",
+      "/usr/local/bin/ffmpeg",
+      "/opt/local/bin/ffmpeg"
+    ];
   }
 
+  if (process.platform === "linux") {
+    return [
+      "/usr/bin/ffmpeg",
+      "/usr/local/bin/ffmpeg",
+      "/snap/bin/ffmpeg"
+    ];
+  }
+
+  return [];
+}
+
+async function findInSystemPath(commandName) {
+  const lookupCommand = process.platform === "win32" ? "where.exe" : "which";
+
   try {
-    const output = await runProcess("where.exe", [commandName], { stdio: ["ignore", "pipe", "pipe"] });
+    const output = await runProcess(lookupCommand, [commandName], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
     return output
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -178,15 +203,16 @@ async function collectFfmpegCandidates(overridePath) {
   const candidates = [
     overridePath,
     process.env.FFMPEG_PATH,
-    ...getLocalFfmpegCandidates()
+    ...getLocalFfmpegCandidates(),
+    ...getCommonFfmpegCandidates()
   ];
 
   if (process.platform === "win32") {
-    candidates.push(await findInWindowsPath("ffmpeg.exe"));
+    candidates.push(await findInSystemPath("ffmpeg.exe"));
     candidates.push(await findWingetFfmpegPath());
     candidates.push("ffmpeg.exe");
   } else {
-    candidates.push(await findInWindowsPath("ffmpeg"));
+    candidates.push(await findInSystemPath("ffmpeg"));
     candidates.push("ffmpeg");
   }
 
@@ -205,8 +231,24 @@ async function resolveFfmpegPath(overridePath) {
   return null;
 }
 
+async function validateFfmpegPath(filePath) {
+  if (!filePath) {
+    return false;
+  }
+
+  return canExecute(filePath);
+}
+
 function isJxrFileName(fileName) {
   return JXR_EXTENSIONS.has(path.extname(fileName || "").toLowerCase());
+}
+
+function getJxrUnsupportedMessage() {
+  if (process.platform === "darwin") {
+    return "JXR input is currently supported on Windows only. On macOS, convert the file to PNG or JPG before importing it.";
+  }
+
+  return "JXR input is currently supported on Windows only.";
 }
 
 function inferCategory(mimeType, fileName) {
@@ -307,7 +349,7 @@ function buildArgs({ inputPath, outputPath, action, category, targetFormat, comp
 
 async function decodeJxrToPng(inputPath, outputPath) {
   if (process.platform !== "win32") {
-    throw new Error("JXR input is currently supported on Windows only.");
+    throw new Error(getJxrUnsupportedMessage());
   }
 
   const scriptPath = path.join(path.dirname(outputPath), "decode-jxr.ps1");
@@ -376,6 +418,10 @@ async function convertMedia({
     throw new Error("Missing required conversion fields.");
   }
 
+  if (isJxrFileName(fileName) && process.platform !== "win32") {
+    throw new Error(getJxrUnsupportedMessage());
+  }
+
   const category = inferCategory(mimeType, fileName);
   if (category === "unknown") {
     throw new Error("Unsupported input type.");
@@ -405,7 +451,9 @@ async function convertMedia({
 
     const ffmpegPath = await resolveFfmpegPath(overridePath);
     if (!ffmpegPath) {
-      throw new Error("FFmpeg was not found. Install it and add it to PATH, or place ffmpeg.exe in the local bin folder.");
+      throw new Error(process.platform === "win32"
+        ? "FFmpeg was not found. Install it and add it to PATH, or place ffmpeg.exe in the local bin folder."
+        : "FFmpeg was not found. Install it and add it to PATH, or place ffmpeg in the local bin folder.");
     }
 
     const args = buildArgs({
@@ -440,5 +488,6 @@ module.exports = {
   convertMedia,
   inferCategory,
   isJxrFileName,
-  resolveFfmpegPath
+  resolveFfmpegPath,
+  validateFfmpegPath
 };

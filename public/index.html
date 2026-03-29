@@ -24,7 +24,7 @@
         <section class="panel hero-panel">
           <div class="hero-copy">
             <span class="chip">支持 webp -> gif</span>
-            <span class="chip">支持 jxr 输入</span>
+            <span class="chip" id="jxr-chip">JXR 输入（Windows）</span>
             <span class="chip">视频转音频</span>
             <span class="chip">本地处理</span>
           </div>
@@ -57,7 +57,12 @@
 
           <div class="field">
             <label for="ffmpeg-path">FFmpeg 路径</label>
-            <input id="ffmpeg-path" type="text" placeholder="留空则使用 PATH 或 ./bin/ffmpeg.exe" />
+            <input id="ffmpeg-path" type="text" placeholder="留空则使用 PATH 或本地 bin 目录" />
+            <div class="dependency-actions hidden" id="dependency-actions">
+              <button type="button" class="secondary-button" id="install-deps-button">一键安装 FFmpeg</button>
+              <button type="button" class="secondary-button" id="pick-ffmpeg-button">手动选择 FFmpeg</button>
+              <button type="button" class="secondary-button" id="recheck-status-button">重新检测</button>
+            </div>
           </div>
 
           <div class="field">
@@ -117,12 +122,12 @@
           </article>
           <article>
             <h3>图片</h3>
-            <p>支持 jpg、png、webp、gif、bmp、tiff 常见互转，并支持 jxr 输入转换与 webp 转 gif。</p>
+            <p id="image-capability-copy">支持 jpg、png、webp、gif、bmp、tiff 常见互转，并支持 JXR 输入转换与 webp 转 gif。</p>
           </article>
         </div>
       </section>
     </div>
 
-    <script defer src="./app.js?v=desktop-refresh-3"></script>
+    <script defer src="./app.js?v=desktop-refresh-macos-1"></script>
   </body>
 </html>

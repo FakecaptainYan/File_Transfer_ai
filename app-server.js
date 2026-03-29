@@ -23,6 +23,18 @@ function writeCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 
+function getFfmpegInstallHint() {
+  if (process.platform === "darwin") {
+    return "Install FFmpeg with Homebrew (`brew install ffmpeg`), add it to PATH, or place `ffmpeg` in the local `bin` folder.";
+  }
+
+  if (process.platform === "win32") {
+    return "Install FFmpeg and add it to PATH, or place `ffmpeg.exe` in the local `bin` folder.";
+  }
+
+  return "Install FFmpeg, add it to PATH, or place `ffmpeg` in the local `bin` folder.";
+}
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -81,9 +93,9 @@ async function handleStatus(res) {
   json(res, 200, {
     ready: Boolean(ffmpegPath),
     ffmpegPath,
-    hint: ffmpegPath
-      ? "FFmpeg is available."
-      : "Install FFmpeg and add it to PATH, or keep ffmpeg.exe in the local bin folder."
+    hint: ffmpegPath ? "FFmpeg is available." : getFfmpegInstallHint(),
+    platform: process.platform,
+    supportsJxr: process.platform === "win32"
   });
 }
 

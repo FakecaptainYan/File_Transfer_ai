@@ -1,8 +1,0 @@
-{
-  "name": "apple-media-converter-build-tools",
-  "private": true,
-  "type": "commonjs",
-  "dependencies": {
-    "electron-builder": "^26.0.12"
-  }
-}

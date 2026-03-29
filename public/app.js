@@ -14,6 +14,12 @@ const elements = {
   presetSelect: document.getElementById("preset-select"),
   widthInput: document.getElementById("width-input"),
   ffmpegPath: document.getElementById("ffmpeg-path"),
+  dependencyActions: document.getElementById("dependency-actions"),
+  installDepsButton: document.getElementById("install-deps-button"),
+  pickFfmpegButton: document.getElementById("pick-ffmpeg-button"),
+  recheckStatusButton: document.getElementById("recheck-status-button"),
+  jxrChip: document.getElementById("jxr-chip"),
+  imageCapabilityCopy: document.getElementById("image-capability-copy"),
   desktopOpenButton: document.getElementById("desktop-open-button"),
   convertButton: document.getElementById("convert-button"),
   progressCard: document.getElementById("progress-card"),
@@ -21,6 +27,11 @@ const elements = {
 };
 
 const desktopBridge = window.desktopBridge || null;
+const runtimeState = {
+  platform: "",
+  supportsJxr: true,
+  ffmpegReady: false
+};
 let desktopMeta = null;
 let apiBase = "";
 
@@ -28,17 +39,31 @@ if (elements.runtimeStatus) {
   elements.runtimeStatus.textContent = "界面脚本已加载";
 }
 
+function renderMessageCard(title, text, isError = false) {
+  if (!elements.messageCard) {
+    return;
+  }
+
+  elements.messageCard.replaceChildren();
+
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+
+  const paragraph = document.createElement("p");
+  paragraph.textContent = text;
+  if (isError) {
+    paragraph.style.color = "#c4374b";
+  }
+
+  elements.messageCard.append(strong, paragraph);
+}
+
 function showBootError(error) {
   const text = error?.message || String(error || "未知错误");
   if (elements.runtimeStatus) {
     elements.runtimeStatus.textContent = "界面脚本错误";
   }
-  if (elements.messageCard) {
-    elements.messageCard.innerHTML = `
-      <strong>界面加载失败</strong>
-      <p style="color:#c4374b">${text}</p>
-    `;
-  }
+  renderMessageCard("界面加载失败", text, true);
 }
 
 window.addEventListener("error", (event) => {
@@ -81,6 +106,67 @@ const optionMap = {
 };
 
 let selectedFile = null;
+
+function getCurrentPlatform() {
+  return runtimeState.platform || desktopMeta?.platform || "";
+}
+
+function isJxrSupportedOnCurrentPlatform() {
+  return runtimeState.supportsJxr !== false;
+}
+
+function getFfmpegPlaceholder(platform) {
+  if (platform === "darwin") {
+    return "留空则使用 PATH、Homebrew 安装位置或本地 ./bin/ffmpeg";
+  }
+
+  if (platform === "win32") {
+    return "留空则使用 PATH 或本地 ./bin/ffmpeg.exe";
+  }
+
+  return "留空则使用 PATH 或本地 ./bin/ffmpeg";
+}
+
+function getInstallButtonLabel() {
+  return getCurrentPlatform() === "darwin" ? "一键安装 FFmpeg" : "打开依赖向导";
+}
+
+function updateDependencyActions() {
+  const shouldShow = Boolean(desktopMeta?.isDesktop) && !runtimeState.ffmpegReady;
+  elements.dependencyActions?.classList.toggle("hidden", !shouldShow);
+
+  if (elements.installDepsButton) {
+    elements.installDepsButton.textContent = getInstallButtonLabel();
+  }
+}
+
+function applyPlatformCopy() {
+  const platform = getCurrentPlatform();
+
+  if (elements.ffmpegPath) {
+    elements.ffmpegPath.placeholder = getFfmpegPlaceholder(platform);
+  }
+
+  if (elements.jxrChip) {
+    elements.jxrChip.textContent = isJxrSupportedOnCurrentPlatform()
+      ? "支持 JXR 输入"
+      : "JXR 需先转 PNG/JPG";
+  }
+
+  if (elements.imageCapabilityCopy) {
+    elements.imageCapabilityCopy.textContent = isJxrSupportedOnCurrentPlatform()
+      ? "支持 jpg、png、webp、gif、bmp、tiff 常见互转，并支持 JXR 输入转换与 webp 转 gif。"
+      : "支持 jpg、png、webp、gif、bmp、tiff 常见互转与 webp 转 gif。JXR / WDP / HDP 在当前系统需先转成 PNG 或 JPG。";
+  }
+}
+
+function getJxrUnsupportedText() {
+  if (getCurrentPlatform() === "darwin") {
+    return "当前 macOS 版本暂不支持直接解码 JXR / WDP / HDP。请先在外部把它转换成 PNG 或 JPG 后再导入。";
+  }
+
+  return "当前系统暂不支持直接解码 JXR / WDP / HDP。";
+}
 
 function getBaseName(fileName) {
   const parts = String(fileName || "output").split(".");
@@ -305,10 +391,7 @@ function getApiUrl(resourcePath) {
 }
 
 function setMessage(title, text, isError = false) {
-  elements.messageCard.innerHTML = `
-    <strong>${title}</strong>
-    <p style="color:${isError ? "#c4374b" : ""}">${text}</p>
-  `;
+  renderMessageCard(title, text, isError);
 }
 
 function humanSize(size) {
@@ -338,6 +421,12 @@ function inferCategory(file) {
 
 function buildPreview(file, category) {
   elements.previewSurface.innerHTML = "";
+
+  if (isJxrFile(file)) {
+    elements.previewSurface.innerHTML = "<p>JXR / WDP / HDP 预览依赖系统解码，当前界面不直接渲染预览。</p>";
+    return;
+  }
+
   const objectUrl = URL.createObjectURL(file);
 
   if (category === "image") {
@@ -413,7 +502,7 @@ function applySmartDefaults(file, category) {
     return;
   }
 
-  if (isJxrFile(file)) {
+  if (isJxrFile(file) && isJxrSupportedOnCurrentPlatform()) {
     elements.actionSelect.value = "convert";
     updateFormatOptions();
     elements.formatSelect.value = "png";
@@ -422,6 +511,7 @@ function applySmartDefaults(file, category) {
 
 function selectFile(file) {
   const category = inferCategory(file);
+  const unsupportedJxr = isJxrFile(file) && !isJxrSupportedOnCurrentPlatform();
   selectedFile = file;
   elements.selectedFile.textContent = file.name;
   elements.categoryTag.textContent = category === "unknown" ? "未知类型" : category.toUpperCase();
@@ -429,7 +519,12 @@ function selectFile(file) {
   buildPreview(file, category);
   updateActionOptions(category);
   applySmartDefaults(file, category);
-  elements.convertButton.disabled = category === "unknown";
+  elements.convertButton.disabled = category === "unknown" || unsupportedJxr;
+
+  if (unsupportedJxr) {
+    setMessage("JXR 当前不可用", getJxrUnsupportedText(), true);
+    return;
+  }
 
   if (category === "unknown") {
     setMessage("文件类型暂不支持", "请换成常见视频、音频或图片文件。", true);
@@ -499,6 +594,12 @@ async function loadDesktopMeta() {
   try {
     desktopMeta = await desktopBridge.getMeta();
     apiBase = desktopMeta?.apiBase || "";
+    runtimeState.platform = desktopMeta?.platform || runtimeState.platform;
+    if (elements.ffmpegPath && desktopMeta?.savedFfmpegPath) {
+      elements.ffmpegPath.value = desktopMeta.savedFfmpegPath;
+    }
+    applyPlatformCopy();
+    updateDependencyActions();
   } catch (_error) {
     desktopMeta = null;
     apiBase = "";
@@ -509,18 +610,65 @@ async function refreshRuntimeStatus() {
   try {
     const response = await fetch(getApiUrl("/api/status"));
     const data = await response.json();
+    runtimeState.platform = data.platform || runtimeState.platform;
+    runtimeState.supportsJxr = data.supportsJxr !== false;
+    runtimeState.ffmpegReady = Boolean(data.ready);
+    applyPlatformCopy();
+    updateDependencyActions();
+
     if (desktopMeta?.isDesktop) {
       elements.runtimeStatus.textContent = data.ready ? "桌面版 · FFmpeg 已就绪" : "桌面版 · 未检测到 FFmpeg";
     } else {
       elements.runtimeStatus.textContent = data.ready ? "FFmpeg 已就绪" : "未检测到 FFmpeg";
     }
     if (!data.ready) {
-      setMessage("需要 FFmpeg", data.hint, true);
+      const detail = desktopMeta?.isDesktop
+        ? `${data.hint} 你也可以点击下方按钮一键安装，或手动选择本机的 FFmpeg。`
+        : data.hint;
+      setMessage("需要 FFmpeg", detail, true);
     }
   } catch (_error) {
     elements.runtimeStatus.textContent = "状态检测失败";
+    runtimeState.ffmpegReady = false;
+    updateDependencyActions();
     setMessage("服务连接失败", "请确认本地服务已经启动。", true);
   }
+}
+
+async function openDependencyAssistant() {
+  if (!desktopBridge?.showDependencyAssistant) {
+    return;
+  }
+
+  await desktopBridge.showDependencyAssistant();
+}
+
+async function chooseDesktopFfmpegPath() {
+  if (!desktopBridge?.chooseFfmpegPath) {
+    return;
+  }
+
+  const result = await desktopBridge.chooseFfmpegPath();
+  if (result?.ok && result.filePath && elements.ffmpegPath) {
+    elements.ffmpegPath.value = result.filePath;
+  }
+  await refreshRuntimeStatus();
+}
+
+async function persistDesktopFfmpegPath() {
+  if (!desktopMeta?.isDesktop || !desktopBridge?.setFfmpegPath || !elements.ffmpegPath) {
+    return;
+  }
+
+  const value = elements.ffmpegPath.value.trim();
+  const result = await desktopBridge.setFfmpegPath(value);
+
+  if (!result?.ok) {
+    setMessage("FFmpeg 路径无效", result?.error || "请重新选择可用的 FFmpeg。", true);
+    return;
+  }
+
+  await refreshRuntimeStatus();
 }
 
 async function saveOutput(blob, outputName) {
@@ -553,6 +701,11 @@ async function saveOutput(blob, outputName) {
 
 async function convertSelectedFile() {
   if (!selectedFile) return;
+
+  if (isJxrFile(selectedFile) && !isJxrSupportedOnCurrentPlatform()) {
+    setMessage("JXR 当前不可用", getJxrUnsupportedText(), true);
+    return;
+  }
 
   elements.progressCard.classList.remove("hidden");
   elements.convertButton.disabled = true;
@@ -604,7 +757,7 @@ async function convertSelectedFile() {
 
     const blob = await response.blob();
     const disposition = response.headers.get("Content-Disposition") || "";
-    const nameMatch = disposition.match(/filename="([^"]+)"/i);
+    const nameMatch = disposition.match(/filename=\"([^\"]+)\"/i);
     const outputName =
       usedAnimatedWebpFallback
         ? buildDownloadName(selectedFile.name, elements.formatSelect.value, elements.actionSelect.value)
@@ -614,7 +767,7 @@ async function convertSelectedFile() {
     setMessage("转换失败", error.message || "请检查 FFmpeg 路径与输入文件。", true);
   } finally {
     elements.progressCard.classList.add("hidden");
-    elements.convertButton.disabled = inferCategory(selectedFile) === "unknown";
+    elements.convertButton.disabled = inferCategory(selectedFile) === "unknown" || (isJxrFile(selectedFile) && !isJxrSupportedOnCurrentPlatform());
   }
 }
 
@@ -660,6 +813,24 @@ elements.desktopOpenButton?.addEventListener("click", (event) => {
 });
 elements.actionSelect?.addEventListener("change", updateFormatOptions);
 elements.convertButton?.addEventListener("click", convertSelectedFile);
+elements.installDepsButton?.addEventListener("click", () => {
+  openDependencyAssistant().catch((error) => {
+    setMessage("无法打开依赖向导", error.message || "请稍后再试。", true);
+  });
+});
+elements.pickFfmpegButton?.addEventListener("click", () => {
+  chooseDesktopFfmpegPath().catch((error) => {
+    setMessage("选择 FFmpeg 失败", error.message || "请稍后再试。", true);
+  });
+});
+elements.recheckStatusButton?.addEventListener("click", () => {
+  refreshRuntimeStatus().catch(() => {});
+});
+elements.ffmpegPath?.addEventListener("change", () => {
+  persistDesktopFfmpegPath().catch((error) => {
+    setMessage("保存 FFmpeg 路径失败", error.message || "请稍后再试。", true);
+  });
+});
 
 window.addEventListener("dragover", (event) => {
   event.preventDefault();
@@ -673,5 +844,6 @@ window.addEventListener("drop", (event) => {
   }
 });
 
+applyPlatformCopy();
 loadDesktopMeta().finally(refreshRuntimeStatus);
 }

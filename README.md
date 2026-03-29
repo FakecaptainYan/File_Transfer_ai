@@ -11,59 +11,91 @@
 - 动画 WebP 转 GIF 浏览器回退
 - `jxr / wdp / hdp` 输入图片转常见格式
 
-## 现在怎么直接打开
+## 技术栈
 
-真正的 Electron 桌面版入口：
+- 前端：原生 HTML / CSS / JavaScript
+- 后端：Node.js 本地服务
+- 桌面壳：Electron
+- 转换引擎：本机 FFmpeg
+- JXR 解码：Windows PresentationCore / WIC
 
-- [Apple Media Converter Desktop.vbs](C:\0_Project\Apple%20Media%20Converter%20Desktop.vbs)
+## 安装依赖
 
-它会直接使用你本机的 `electron.exe` 启动当前项目。
-
-备用的独立窗口启动器：
-
-Windows 下可以直接双击这个文件：
-
-- [Apple Media Converter.vbs](C:\0_Project\Apple Media Converter.vbs)
-
-它会自动：
-
-- 启动本地服务
-- 用独立应用窗口打开界面
-- 不需要你手工开浏览器标签页
+```bash
+npm install
+```
 
 ## Web 方式运行
 
-```powershell
-cd C:\0_Project
+```bash
 node server.js
+```
+
+Windows 可以手动打开：
+
+```powershell
 start http://localhost:3000
+```
+
+macOS 可以手动打开：
+
+```bash
+open http://localhost:3000
 ```
 
 ## Electron 桌面版
 
-项目已经补好了 Electron 桌面壳和打包配置：
+开发启动：
 
-- [desktop/electron-main.js](C:\0_Project\desktop\electron-main.js)
-- [desktop/electron-preload.js](C:\0_Project\desktop\electron-preload.js)
+```bash
+npm run start:desktop
+```
 
-如果依赖安装和外网下载正常，可以用下面命令打包 Windows 桌面版：
+如果你需要指定自定义 Electron 分发目录，也仍然可以继续使用：
 
-```powershell
-cd C:\0_Project
-cmd /c npm run start:desktop
-cmd /c npm run dist:win
+```bash
+ELECTRON_OVERRIDE_DIST_PATH=/path/to/electron/dist npm run start:desktop
+```
+
+## 打包
+
+打 Windows 包：
+
+```bash
+npm run dist:win
+```
+
+打 macOS 包：
+
+```bash
+npm run dist:mac
+```
+
+自动按当前参数选择平台：
+
+```bash
+npm run dist
+```
+
+生成产物会输出到 `dist/`。
+
+## FFmpeg 说明
+
+- 开发环境下会优先从 PATH 查找 FFmpeg
+- 也支持把可执行文件放到本地 `bin/` 目录
+- Windows 使用 `bin/ffmpeg.exe`
+- macOS / Linux 使用 `bin/ffmpeg`
+- 打包时 `bin/` 会作为额外资源一并带进桌面应用
+
+macOS 如果还没安装 FFmpeg，推荐：
+
+```bash
+brew install ffmpeg
 ```
 
 ## JXR 支持说明
 
-- 已支持把 `.jxr`、`.wdp`、`.hdp` 作为输入图片
+- Windows 下支持把 `.jxr`、`.wdp`、`.hdp` 作为输入图片
 - 当前输出目标支持：`png`、`jpg`、`webp`、`gif`、`bmp`、`tiff`
 - JXR 解码走的是 Windows 自带图像编解码器回退，再交给 FFmpeg 处理后续格式转换
-
-## 技术说明
-
-- 前端：原生 HTML / CSS / JavaScript
-- 后端：Node.js 本地服务
-- 桌面壳：Electron 代码已接入
-- 转换引擎：本机 FFmpeg
-- JXR 回退：Windows PresentationCore / WIC
+- macOS 当前不支持直接解码 JXR / WDP / HDP，请先转成 PNG 或 JPG 再导入

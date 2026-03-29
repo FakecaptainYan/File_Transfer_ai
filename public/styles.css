@@ -278,6 +278,17 @@ h1 {
   outline: none;
 }
 
+.dependency-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.dependency-actions .secondary-button {
+  padding: 10px 14px;
+}
+
 .field input:focus,
 .field select:focus {
   border-color: rgba(31, 140, 255, 0.55);

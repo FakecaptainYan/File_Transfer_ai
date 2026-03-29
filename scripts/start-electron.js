@@ -1,15 +1,31 @@
+const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 
+function getElectronExecutableFromOverride(overridePath) {
+  const candidates = process.platform === "win32"
+    ? [path.join(overridePath, "electron.exe")]
+    : process.platform === "darwin"
+      ? [
+          path.join(overridePath, "Electron.app", "Contents", "MacOS", "Electron"),
+          path.join(overridePath, "electron")
+        ]
+      : [path.join(overridePath, "electron")];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+}
+
 function getElectronExecutable() {
   const override = process.env.ELECTRON_OVERRIDE_DIST_PATH;
-  if (!override) {
-    throw new Error("ELECTRON_OVERRIDE_DIST_PATH is not set.");
+  if (override) {
+    return getElectronExecutableFromOverride(override);
   }
 
-  return process.platform === "win32"
-    ? path.join(override, "electron.exe")
-    : path.join(override, "electron");
+  try {
+    return require("electron");
+  } catch (_error) {
+    throw new Error("Electron is not installed. Run npm install before starting the desktop app.");
+  }
 }
 
 function main() {
