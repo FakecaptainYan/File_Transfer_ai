@@ -1,6 +1,6 @@
 {
   "name": "media-converter-lab",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A desktop-first local media converter for video, audio and image conversion.",
   "author": "FakecaptainYan",
   "main": "desktop/electron-main.js",

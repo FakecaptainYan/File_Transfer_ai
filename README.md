@@ -23,7 +23,9 @@
 - 后端：Node.js 本地服务
 - 桌面壳：Electron
 - 转换引擎：本机 FFmpeg
-- JXR 解码：Windows PresentationCore / WIC
+- JXR 解码：
+  - Windows：PresentationCore / WIC
+  - macOS / Linux：`jxrlib` (`JxrDecApp`)
 
 ## 安装依赖
 
@@ -102,6 +104,14 @@ brew install ffmpeg
 ## JXR 支持说明
 
 - Windows 下支持把 `.jxr`、`.wdp`、`.hdp` 作为输入图片
+- macOS 下支持通过 `jxrlib` 解码 `.jxr`、`.wdp`、`.hdp`
 - 当前输出目标支持：`png`、`jpg`、`webp`、`gif`、`bmp`、`tiff`
-- JXR 解码走的是 Windows 自带图像编解码器回退，再交给 FFmpeg 处理后续格式转换
-- macOS 当前不支持直接解码 JXR / WDP / HDP，请先转成 PNG 或 JPG 再导入
+- Windows 上走系统图像编解码器回退，再交给 FFmpeg 处理后续格式转换
+- macOS 上走 `JxrDecApp -> TIFF -> FFmpeg` 的本地链路
+- macOS 如果没有安装 JXR 解码器，桌面版会提示安装 `jxrlib`
+
+macOS 手动安装 JXR 支持：
+
+```bash
+brew install jxrlib
+```

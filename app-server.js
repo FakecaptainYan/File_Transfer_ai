@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { MIME_TYPES, convertMedia, resolveFfmpegPath } = require("./media-core");
+const { MIME_TYPES, convertMedia, getJxrSupportStatus, resolveFfmpegPath } = require("./media-core");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 
@@ -90,12 +90,25 @@ function serveStatic(req, res) {
 
 async function handleStatus(res) {
   const ffmpegPath = await resolveFfmpegPath();
+  const jxrStatus = await getJxrSupportStatus();
+  const missingDependencies = [];
+
+  if (!ffmpegPath) {
+    missingDependencies.push("ffmpeg");
+  }
+
+  if (!jxrStatus.supported) {
+    missingDependencies.push("jxrlib");
+  }
+
   json(res, 200, {
     ready: Boolean(ffmpegPath),
     ffmpegPath,
     hint: ffmpegPath ? "FFmpeg is available." : getFfmpegInstallHint(),
     platform: process.platform,
-    supportsJxr: process.platform === "win32"
+    supportsJxr: jxrStatus.supported,
+    jxrHint: jxrStatus.hint,
+    missingDependencies
   });
 }
 

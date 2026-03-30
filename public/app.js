@@ -30,7 +30,9 @@ const desktopBridge = window.desktopBridge || null;
 const runtimeState = {
   platform: "",
   supportsJxr: true,
-  ffmpegReady: false
+  ffmpegReady: false,
+  jxrHint: "",
+  missingDependencies: []
 };
 let desktopMeta = null;
 let apiBase = "";
@@ -115,6 +117,18 @@ function isJxrSupportedOnCurrentPlatform() {
   return runtimeState.supportsJxr !== false;
 }
 
+function getMissingDependencies() {
+  return Array.isArray(runtimeState.missingDependencies) ? runtimeState.missingDependencies : [];
+}
+
+function isFfmpegMissing() {
+  return getMissingDependencies().includes("ffmpeg");
+}
+
+function isJxrDecoderMissing() {
+  return getMissingDependencies().includes("jxrlib");
+}
+
 function getFfmpegPlaceholder(platform) {
   if (platform === "darwin") {
     return "留空则使用 PATH、Homebrew 安装位置或本地 ./bin/ffmpeg";
@@ -128,16 +142,36 @@ function getFfmpegPlaceholder(platform) {
 }
 
 function getInstallButtonLabel() {
-  return getCurrentPlatform() === "darwin" ? "一键安装 FFmpeg" : "打开依赖向导";
+  const platform = getCurrentPlatform();
+  const hasFfmpeg = isFfmpegMissing();
+  const hasJxr = isJxrDecoderMissing();
+
+  if (platform === "darwin") {
+    if (hasFfmpeg && hasJxr) {
+      return "一键安装 FFmpeg + JXR 支持";
+    }
+
+    if (hasJxr) {
+      return "一键安装 JXR 支持";
+    }
+
+    if (hasFfmpeg) {
+      return "一键安装 FFmpeg";
+    }
+  }
+
+  return "打开依赖向导";
 }
 
 function updateDependencyActions() {
-  const shouldShow = Boolean(desktopMeta?.isDesktop) && !runtimeState.ffmpegReady;
+  const shouldShow = Boolean(desktopMeta?.isDesktop) && getMissingDependencies().length > 0;
   elements.dependencyActions?.classList.toggle("hidden", !shouldShow);
 
   if (elements.installDepsButton) {
     elements.installDepsButton.textContent = getInstallButtonLabel();
   }
+
+  elements.pickFfmpegButton?.classList.toggle("hidden", !isFfmpegMissing());
 }
 
 function applyPlatformCopy() {
@@ -150,19 +184,27 @@ function applyPlatformCopy() {
   if (elements.jxrChip) {
     elements.jxrChip.textContent = isJxrSupportedOnCurrentPlatform()
       ? "支持 JXR 输入"
-      : "JXR 需先转 PNG/JPG";
+      : (platform === "darwin" ? "JXR 需安装解码器" : "JXR 需先转 PNG/JPG");
   }
 
   if (elements.imageCapabilityCopy) {
     elements.imageCapabilityCopy.textContent = isJxrSupportedOnCurrentPlatform()
       ? "支持 jpg、png、webp、gif、bmp、tiff 常见互转，并支持 JXR 输入转换与 webp 转 gif。"
-      : "支持 jpg、png、webp、gif、bmp、tiff 常见互转与 webp 转 gif。JXR / WDP / HDP 在当前系统需先转成 PNG 或 JPG。";
+      : (
+        platform === "darwin"
+          ? "支持 jpg、png、webp、gif、bmp、tiff 常见互转与 webp 转 gif。安装 jxrlib 后，macOS 也可以直接导入 JXR / WDP / HDP。"
+          : "支持 jpg、png、webp、gif、bmp、tiff 常见互转与 webp 转 gif。JXR / WDP / HDP 在当前系统需先转成 PNG 或 JPG。"
+      );
   }
 }
 
 function getJxrUnsupportedText() {
+  if (runtimeState.jxrHint && !isJxrSupportedOnCurrentPlatform()) {
+    return runtimeState.jxrHint;
+  }
+
   if (getCurrentPlatform() === "darwin") {
-    return "当前 macOS 版本暂不支持直接解码 JXR / WDP / HDP。请先在外部把它转换成 PNG 或 JPG 后再导入。";
+    return "当前还没有检测到 JXR 解码器。安装 jxrlib 后，macOS 就可以直接解码 JXR / WDP / HDP。";
   }
 
   return "当前系统暂不支持直接解码 JXR / WDP / HDP。";
@@ -613,23 +655,55 @@ async function refreshRuntimeStatus() {
     runtimeState.platform = data.platform || runtimeState.platform;
     runtimeState.supportsJxr = data.supportsJxr !== false;
     runtimeState.ffmpegReady = Boolean(data.ready);
+    runtimeState.jxrHint = data.jxrHint || "";
+    runtimeState.missingDependencies = Array.isArray(data.missingDependencies) ? data.missingDependencies : [];
     applyPlatformCopy();
     updateDependencyActions();
 
+    const hasFfmpeg = isFfmpegMissing();
+    const hasJxr = isJxrDecoderMissing();
+
     if (desktopMeta?.isDesktop) {
-      elements.runtimeStatus.textContent = data.ready ? "桌面版 · FFmpeg 已就绪" : "桌面版 · 未检测到 FFmpeg";
+      if (!hasFfmpeg && !hasJxr) {
+        elements.runtimeStatus.textContent = "桌面版 · 依赖已就绪";
+      } else if (hasFfmpeg && hasJxr) {
+        elements.runtimeStatus.textContent = "桌面版 · 缺少 FFmpeg 和 JXR 解码器";
+      } else if (hasFfmpeg) {
+        elements.runtimeStatus.textContent = "桌面版 · 未检测到 FFmpeg";
+      } else {
+        elements.runtimeStatus.textContent = "桌面版 · JXR 支持未启用";
+      }
+    } else if (!hasFfmpeg && !hasJxr) {
+      elements.runtimeStatus.textContent = "依赖已就绪";
+    } else if (hasFfmpeg && hasJxr) {
+      elements.runtimeStatus.textContent = "缺少 FFmpeg 和 JXR 解码器";
+    } else if (hasFfmpeg) {
+      elements.runtimeStatus.textContent = "未检测到 FFmpeg";
     } else {
-      elements.runtimeStatus.textContent = data.ready ? "FFmpeg 已就绪" : "未检测到 FFmpeg";
+      elements.runtimeStatus.textContent = "JXR 支持未启用";
     }
-    if (!data.ready) {
+
+    if (hasFfmpeg) {
+      const detailParts = [data.hint];
+      if (hasJxr && data.jxrHint) {
+        detailParts.push(data.jxrHint);
+      }
+
       const detail = desktopMeta?.isDesktop
-        ? `${data.hint} 你也可以点击下方按钮一键安装，或手动选择本机的 FFmpeg。`
-        : data.hint;
-      setMessage("需要 FFmpeg", detail, true);
+        ? `${detailParts.join(" ")} 你也可以点击下方按钮一键安装，或手动选择本机的 FFmpeg。`
+        : detailParts.join(" ");
+      setMessage("需要依赖", detail, true);
+    } else if (hasJxr) {
+      const detail = desktopMeta?.isDesktop
+        ? `${data.jxrHint} 你可以点击下方按钮一键安装 JXR 支持。`
+        : data.jxrHint;
+      setMessage("JXR 支持可启用", detail);
     }
   } catch (_error) {
     elements.runtimeStatus.textContent = "状态检测失败";
     runtimeState.ffmpegReady = false;
+    runtimeState.supportsJxr = false;
+    runtimeState.missingDependencies = ["ffmpeg"];
     updateDependencyActions();
     setMessage("服务连接失败", "请确认本地服务已经启动。", true);
   }

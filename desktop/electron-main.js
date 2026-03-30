@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs/promises");
 const { app, BrowserWindow, dialog, ipcMain, nativeTheme } = require("electron");
 const { startServer } = require("../app-server");
-const { resolveFfmpegPath, validateFfmpegPath } = require("../media-core");
+const { getJxrSupportStatus, resolveFfmpegPath, validateFfmpegPath } = require("../media-core");
 
 let serverHandle = null;
 let debugLogPath = "";
@@ -163,19 +163,86 @@ async function openTerminalWithCommand(command) {
 async function getDependencySnapshot() {
   const ffmpegPath = await resolveFfmpegPath(getSavedFfmpegPath());
   const brewPath = process.platform === "darwin" ? await findMacBrewPath() : "";
+  const jxrStatus = await getJxrSupportStatus();
 
   return {
     ffmpegPath,
-    brewPath
+    brewPath,
+    jxrStatus
   };
 }
 
-function buildMacInstallCommand(brewPath) {
-  if (brewPath) {
-    return `export PATH="${path.dirname(brewPath)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"; "${brewPath}" install ffmpeg`;
+function getMissingDependencies(snapshot, { includeOptional = true } = {}) {
+  const missing = [];
+
+  if (!snapshot.ffmpegPath) {
+    missing.push("ffmpeg");
   }
 
-  return '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)" && brew install ffmpeg';
+  if (includeOptional && !snapshot.jxrStatus?.supported) {
+    missing.push("jxrlib");
+  }
+
+  return missing;
+}
+
+function getMacInstallLabel(snapshot, missingDependencies) {
+  const label = missingDependencies.map((name) => (name === "jxrlib" ? "JXR 支持" : "FFmpeg")).join(" + ");
+
+  if (!missingDependencies.length) {
+    return "安装依赖";
+  }
+
+  if (!snapshot.brewPath) {
+    return `安装 Homebrew + ${label}`;
+  }
+
+  return `安装 ${label}`;
+}
+
+function buildMacInstallCommand(snapshot, missingDependencies) {
+  const packages = missingDependencies.filter((name) => ["ffmpeg", "jxrlib"].includes(name));
+
+  if (!packages.length) {
+    return "";
+  }
+
+  if (snapshot.brewPath) {
+    return `export PATH="${path.dirname(snapshot.brewPath)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"; "${snapshot.brewPath}" install ${packages.join(" ")}`;
+  }
+
+  return `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)" && brew install ${packages.join(" ")}`;
+}
+
+function getDependencyMessage(snapshot, missingDependencies) {
+  const hasFfmpeg = missingDependencies.includes("ffmpeg");
+  const hasJxr = missingDependencies.includes("jxrlib");
+
+  if (hasFfmpeg && hasJxr) {
+    return {
+      message: "当前没有检测到可用的 FFmpeg，并且 JXR 解码器也还没有安装。",
+      detail: "你可以一键安装 FFmpeg 和 jxrlib，也可以先手动选择本机已有的 FFmpeg。安装完成后，macOS 就能直接转换 JXR / WDP / HDP。"
+    };
+  }
+
+  if (hasFfmpeg) {
+    return {
+      message: "当前没有检测到可用的 FFmpeg。",
+      detail: "你可以一键启动安装流程，或者手动选择本机已有的 FFmpeg 可执行文件。"
+    };
+  }
+
+  if (hasJxr) {
+    return {
+      message: "当前还没有检测到 JXR 解码器（JxrDecApp）。",
+      detail: "安装 jxrlib 后，macOS 就可以直接转换 JXR / WDP / HDP。"
+    };
+  }
+
+  return {
+    message: "当前没有检测到缺失依赖。",
+    detail: "应用已经具备当前平台的运行依赖。"
+  };
 }
 
 async function chooseFfmpegExecutable(window) {
@@ -213,16 +280,17 @@ async function chooseFfmpegExecutable(window) {
   };
 }
 
-async function showDependencyAssistant(window, { force = false } = {}) {
+async function showDependencyAssistant(window, { force = false, includeOptional = true } = {}) {
   if (dependencyPromptOpen) {
     return { action: "busy" };
   }
 
   const snapshot = await getDependencySnapshot();
-  if (snapshot.ffmpegPath && !force) {
+  const missingDependencies = getMissingDependencies(snapshot, { includeOptional });
+
+  if (!missingDependencies.length && !force) {
     return {
-      action: "already-ready",
-      ffmpegPath: snapshot.ffmpegPath
+      action: "already-ready"
     };
   }
 
@@ -230,31 +298,36 @@ async function showDependencyAssistant(window, { force = false } = {}) {
 
   try {
     const isMac = process.platform === "darwin";
-    const canAutoInstall = isMac;
-    const installLabel = isMac
-      ? (snapshot.brewPath ? "安装 FFmpeg" : "安装 Homebrew + FFmpeg")
-      : "手动选择 FFmpeg";
-    const buttons = canAutoInstall
-      ? [installLabel, "手动选择 FFmpeg", "稍后再说"]
-      : ["手动选择 FFmpeg", "稍后再说"];
+    const canAutoInstall = isMac && missingDependencies.length > 0;
+    const canManualChooseFfmpeg = missingDependencies.includes("ffmpeg");
+    const { message, detail } = getDependencyMessage(snapshot, missingDependencies);
+    const buttons = [];
+
+    if (canAutoInstall) {
+      buttons.push(getMacInstallLabel(snapshot, missingDependencies));
+    }
+
+    if (canManualChooseFfmpeg) {
+      buttons.push("手动选择 FFmpeg");
+    }
+
+    buttons.push("稍后再说");
 
     const result = await dialog.showMessageBox(window, {
       type: "warning",
       title: "缺少运行依赖",
-      message: "当前没有检测到可用的 FFmpeg。",
-      detail: canAutoInstall
-        ? "你可以一键启动安装流程，或者手动选择本机已有的 FFmpeg 可执行文件。"
-        : "请手动选择本机已有的 FFmpeg 可执行文件。",
+      message,
+      detail,
       buttons,
       cancelId: buttons.length - 1,
       defaultId: 0,
       noLink: true
     });
 
-    const manualChoiceIndex = canAutoInstall ? 1 : 0;
+    const manualChoiceIndex = buttons.indexOf("手动选择 FFmpeg");
     const cancelIndex = buttons.length - 1;
 
-    if (result.response === manualChoiceIndex) {
+    if (manualChoiceIndex >= 0 && result.response === manualChoiceIndex) {
       return chooseFfmpegExecutable(window);
     }
 
@@ -263,8 +336,10 @@ async function showDependencyAssistant(window, { force = false } = {}) {
     }
 
     if (isMac) {
-      const command = buildMacInstallCommand(snapshot.brewPath);
-      await openTerminalWithCommand(command);
+      const command = buildMacInstallCommand(snapshot, missingDependencies);
+      if (command) {
+        await openTerminalWithCommand(command);
+      }
       await dialog.showMessageBox(window, {
         type: "info",
         title: "安装流程已启动",
@@ -323,7 +398,7 @@ async function createMainWindow() {
 
   window.once("ready-to-show", () => {
     window.show();
-    showDependencyAssistant(window).catch((error) => {
+    showDependencyAssistant(window, { includeOptional: false }).catch((error) => {
       writeDebugLog(`Dependency assistant failed: ${error.message}`).catch(() => {});
     });
   });

@@ -46,14 +46,25 @@ function uniq(items) {
   return [...new Set(items.filter(Boolean))];
 }
 
+function getUnpackedLocalBinDir() {
+  return __dirname.includes(".asar") ? "" : path.join(__dirname, "bin");
+}
+
 function runProcess(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const logs = [];
     let settled = false;
-    const child = spawn(command, args, {
-      windowsHide: true,
-      ...options
-    });
+    let child;
+
+    try {
+      child = spawn(command, args, {
+        windowsHide: true,
+        ...options
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     const fail = (error) => {
       if (settled) {
@@ -84,18 +95,51 @@ function runProcess(command, args, options = {}) {
   });
 }
 
-async function canExecute(filePath) {
+async function canRunCommand(filePath, args) {
   try {
-    await runProcess(filePath, ["-version"]);
+    await runProcess(filePath, args);
     return true;
   } catch (_error) {
     return false;
   }
 }
 
+async function canExecute(filePath) {
+  return canRunCommand(filePath, ["-version"]);
+}
+
+async function canDecodeJxr(filePath) {
+  return new Promise((resolve) => {
+    const logs = [];
+    let child;
+
+    try {
+      child = spawn(filePath, ["-h"], {
+        windowsHide: true
+      });
+    } catch (_error) {
+      resolve(false);
+      return;
+    }
+
+    child.stdout?.on("data", (chunk) => logs.push(chunk.toString("utf8")));
+    child.stderr?.on("data", (chunk) => logs.push(chunk.toString("utf8")));
+    child.once("error", () => resolve(false));
+    child.once("exit", (code) => {
+      const output = logs.join("\n");
+      resolve(
+        code === 0 ||
+        code === 151 ||
+        /JPEG XR Decoder Utility|JxrDecApp/i.test(output)
+      );
+    });
+  });
+}
+
 function getLocalFfmpegCandidates() {
   const exe = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
   const candidates = [];
+  const localBinDir = getUnpackedLocalBinDir();
 
   if (process.resourcesPath) {
     candidates.push(path.join(process.resourcesPath, "bin", exe));
@@ -110,7 +154,9 @@ function getLocalFfmpegCandidates() {
     }
   }
 
-  candidates.push(path.join(__dirname, "bin", exe));
+  if (localBinDir) {
+    candidates.push(path.join(localBinDir, exe));
+  }
   return uniq(candidates);
 }
 
@@ -128,6 +174,53 @@ function getCommonFfmpegCandidates() {
       "/usr/bin/ffmpeg",
       "/usr/local/bin/ffmpeg",
       "/snap/bin/ffmpeg"
+    ];
+  }
+
+  return [];
+}
+
+function getLocalJxrDecoderCandidates() {
+  if (process.platform === "win32") {
+    return [];
+  }
+
+  const exe = "JxrDecApp";
+  const candidates = [];
+  const localBinDir = getUnpackedLocalBinDir();
+
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, "bin", exe));
+  }
+
+  if (process.execPath) {
+    const execDir = path.dirname(process.execPath);
+    if (process.platform === "darwin") {
+      candidates.push(path.join(execDir, "..", "Resources", "bin", exe));
+    } else {
+      candidates.push(path.join(execDir, "bin", exe));
+    }
+  }
+
+  if (localBinDir) {
+    candidates.push(path.join(localBinDir, exe));
+  }
+  return uniq(candidates);
+}
+
+function getCommonJxrDecoderCandidates() {
+  if (process.platform === "darwin") {
+    return [
+      "/opt/homebrew/bin/JxrDecApp",
+      "/usr/local/bin/JxrDecApp",
+      "/opt/local/bin/JxrDecApp"
+    ];
+  }
+
+  if (process.platform === "linux") {
+    return [
+      "/usr/bin/JxrDecApp",
+      "/usr/local/bin/JxrDecApp"
     ];
   }
 
@@ -219,6 +312,23 @@ async function collectFfmpegCandidates(overridePath) {
   return uniq(candidates);
 }
 
+async function collectJxrDecoderCandidates(overridePath) {
+  if (process.platform === "win32") {
+    return [];
+  }
+
+  const candidates = [
+    overridePath,
+    process.env.JXR_DECODER_PATH,
+    ...getLocalJxrDecoderCandidates(),
+    ...getCommonJxrDecoderCandidates(),
+    await findInSystemPath("JxrDecApp"),
+    "JxrDecApp"
+  ];
+
+  return uniq(candidates);
+}
+
 async function resolveFfmpegPath(overridePath) {
   const candidates = await collectFfmpegCandidates(overridePath);
 
@@ -239,16 +349,61 @@ async function validateFfmpegPath(filePath) {
   return canExecute(filePath);
 }
 
+async function resolveJxrDecoderPath(overridePath) {
+  const candidates = await collectJxrDecoderCandidates(overridePath);
+
+  for (const candidate of candidates) {
+    if (await canDecodeJxr(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function getJxrInstallHint() {
+  if (process.platform === "darwin") {
+    return "Install jxrlib with Homebrew (`brew install jxrlib`), or place `JxrDecApp` in the local `bin` folder.";
+  }
+
+  if (process.platform === "linux") {
+    return "Install jxrlib and make sure `JxrDecApp` is available in PATH, or place it in the local `bin` folder.";
+  }
+
+  return "JXR input is supported on Windows, or on systems where `JxrDecApp` from jxrlib is available.";
+}
+
+async function getJxrSupportStatus() {
+  if (process.platform === "win32") {
+    return {
+      supported: true,
+      decoderPath: "windows-wic",
+      hint: "JXR decoding is available through the Windows imaging stack."
+    };
+  }
+
+  const decoderPath = await resolveJxrDecoderPath();
+  return {
+    supported: Boolean(decoderPath),
+    decoderPath,
+    hint: decoderPath ? "JXR decoder is available." : getJxrInstallHint()
+  };
+}
+
 function isJxrFileName(fileName) {
   return JXR_EXTENSIONS.has(path.extname(fileName || "").toLowerCase());
 }
 
 function getJxrUnsupportedMessage() {
   if (process.platform === "darwin") {
-    return "JXR input is currently supported on Windows only. On macOS, convert the file to PNG or JPG before importing it.";
+    return "JXR input on macOS requires jxrlib (`JxrDecApp`). Install it with Homebrew (`brew install jxrlib`) or place `JxrDecApp` in the local `bin` folder.";
   }
 
-  return "JXR input is currently supported on Windows only.";
+  if (process.platform === "linux") {
+    return "JXR input on Linux requires jxrlib (`JxrDecApp`) to be installed and available in PATH.";
+  }
+
+  return "JXR input is not currently supported on this platform.";
 }
 
 function inferCategory(mimeType, fileName) {
@@ -404,6 +559,34 @@ async function decodeJxrToPng(inputPath, outputPath) {
   });
 }
 
+async function decodeJxrWithJxrlib(inputPath, outputPath) {
+  const decoderPath = await resolveJxrDecoderPath();
+  if (!decoderPath) {
+    throw new Error(getJxrUnsupportedMessage());
+  }
+
+  await runProcess(decoderPath, [
+    "-i", inputPath,
+    "-o", outputPath
+  ]);
+
+  await fsp.access(outputPath).catch(() => {
+    throw new Error(`Decoded JXR output was not created: ${outputPath}`);
+  });
+}
+
+async function decodeJxrToIntermediate(inputPath, outputStem) {
+  if (process.platform === "win32") {
+    const outputPath = `${outputStem}.png`;
+    await decodeJxrToPng(inputPath, outputPath);
+    return outputPath;
+  }
+
+  const outputPath = `${outputStem}.tif`;
+  await decodeJxrWithJxrlib(inputPath, outputPath);
+  return outputPath;
+}
+
 async function convertMedia({
   fileName,
   mimeType,
@@ -416,10 +599,6 @@ async function convertMedia({
 }) {
   if (!fileName || !fileBuffer || !action || !targetFormat) {
     throw new Error("Missing required conversion fields.");
-  }
-
-  if (isJxrFileName(fileName) && process.platform !== "win32") {
-    throw new Error(getJxrUnsupportedMessage());
   }
 
   const category = inferCategory(mimeType, fileName);
@@ -441,12 +620,14 @@ async function convertMedia({
     let workingInputPath = inputPath;
 
     if (isJxrFileName(fileName)) {
-      const decodedPngPath = path.join(tempDir, `${sanitizeFileName(path.basename(fileName, inputExtension))}-decoded.png`);
-      await decodeJxrToPng(inputPath, decodedPngPath);
-      await fsp.access(decodedPngPath).catch(() => {
-        throw new Error(`JXR decode failed to create the intermediate PNG: ${decodedPngPath}`);
+      const decodedPath = await decodeJxrToIntermediate(
+        inputPath,
+        path.join(tempDir, `${sanitizeFileName(path.basename(fileName, inputExtension))}-decoded`)
+      );
+      await fsp.access(decodedPath).catch(() => {
+        throw new Error(`JXR decode failed to create the intermediate file: ${decodedPath}`);
       });
-      workingInputPath = decodedPngPath;
+      workingInputPath = decodedPath;
     }
 
     const ffmpegPath = await resolveFfmpegPath(overridePath);
@@ -486,8 +667,11 @@ module.exports = {
   MIME_TYPES,
   buildOutputName,
   convertMedia,
+  getJxrInstallHint,
+  getJxrSupportStatus,
   inferCategory,
   isJxrFileName,
+  resolveJxrDecoderPath,
   resolveFfmpegPath,
   validateFfmpegPath
 };
