@@ -1,7 +1,8 @@
 {
-  "name": "apple-media-converter",
+  "name": "media-converter-lab",
   "version": "1.0.0",
-  "description": "A desktop-first local media converter with Apple-inspired UI for video, audio and image conversion.",
+  "description": "A desktop-first local media converter for video, audio and image conversion.",
+  "author": "FakecaptainYan",
   "main": "desktop/electron-main.js",
   "type": "commonjs",
   "scripts": {
@@ -13,8 +14,8 @@
     "dist:mac": "node scripts/package-desktop.js mac"
   },
   "build": {
-    "appId": "com.codex.apple-media-converter",
-    "productName": "Apple Media Converter",
+    "appId": "com.fakecaptainyan.media-converter-lab",
+    "productName": "Media Converter Lab",
     "directories": {
       "output": "dist"
     },

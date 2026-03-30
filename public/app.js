@@ -1,5 +1,5 @@
-if (!window.__appleMediaConverterBooted) {
-window.__appleMediaConverterBooted = true;
+if (!window.__mediaConverterLabBooted) {
+window.__mediaConverterLabBooted = true;
 
 const elements = {
   runtimeStatus: document.getElementById("runtime-status"),

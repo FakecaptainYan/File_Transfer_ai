@@ -90,7 +90,7 @@ function getSavedFfmpegPath() {
   return String(desktopSettings.ffmpegPath || "").trim();
 }
 
-function escapeAppleScriptString(value) {
+function escapeOsaScriptString(value) {
   return String(value || "")
     .replace(/\\/g, "\\\\")
     .replace(/"/g, "\\\"");
@@ -151,7 +151,7 @@ async function findMacBrewPath() {
 }
 
 async function openTerminalWithCommand(command) {
-  const escapedCommand = escapeAppleScriptString(command);
+  const escapedCommand = escapeOsaScriptString(command);
   await runCommand("/usr/bin/osascript", [
     "-e", 'tell application "Terminal"',
     "-e", "activate",

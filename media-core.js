@@ -427,7 +427,7 @@ async function convertMedia({
     throw new Error("Unsupported input type.");
   }
 
-  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "apple-media-converter-"));
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "media-converter-lab-"));
   const inputExtension = path.extname(fileName) || "";
   const safeInputName = sanitizeFileName(path.basename(fileName, inputExtension)) + inputExtension;
   const normalizedTargetFormat = String(targetFormat).toLowerCase();
