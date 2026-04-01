@@ -129,6 +129,49 @@ async function fileExists(filePath) {
   }
 }
 
+function getMediaDialogFilters() {
+  return [
+    {
+      name: "Media Files",
+      extensions: [
+        "mp4", "mov", "mkv", "avi", "webm", "m4v",
+        "mp3", "wav", "aac", "m4a", "ogg", "flac",
+        "jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "jxr", "wdp", "hdp"
+      ]
+    },
+    {
+      name: "All Files",
+      extensions: ["*"]
+    }
+  ];
+}
+
+async function serializeDesktopFile(filePath) {
+  const fileName = path.basename(filePath);
+  const fileBuffer = await fs.readFile(filePath);
+  const extension = path.extname(filePath).toLowerCase();
+
+  return {
+    fileName,
+    filePath,
+    mimeType: DESKTOP_MIME_TYPES[extension] || "",
+    base64Data: fileBuffer.toString("base64")
+  };
+}
+
+async function ensureUniqueFilePath(directoryPath, fileName) {
+  const parsed = path.parse(fileName || "converted-file");
+  let candidate = path.join(directoryPath, `${parsed.name || "converted-file"}${parsed.ext || ""}`);
+  let index = 1;
+
+  while (await fileExists(candidate)) {
+    candidate = path.join(directoryPath, `${parsed.name || "converted-file"}-${index}${parsed.ext || ""}`);
+    index += 1;
+  }
+
+  return candidate;
+}
+
 async function findMacBrewPath() {
   const preferredPaths = [
     "/opt/homebrew/bin/brew",
@@ -373,6 +416,9 @@ async function createMainWindow() {
     backgroundColor: "#eef3fb",
     titleBarStyle: "hiddenInset",
     autoHideMenuBar: true,
+    ...(process.platform === "darwin" ? {
+      trafficLightPosition: { x: 18, y: 18 }
+    } : {}),
     webPreferences: {
       preload: path.join(__dirname, "electron-preload.js"),
       contextIsolation: true,
@@ -468,6 +514,41 @@ ipcMain.handle("desktop:save-file", async (_event, payload) => {
   };
 });
 
+ipcMain.handle("desktop:pick-output-directory", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Select Output Folder",
+    properties: ["openDirectory", "createDirectory"]
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return { canceled: true };
+  }
+
+  return {
+    canceled: false,
+    directoryPath: result.filePaths[0]
+  };
+});
+
+ipcMain.handle("desktop:save-file-to-directory", async (_event, payload) => {
+  const { directoryPath, fileName, base64Data } = payload || {};
+
+  if (!directoryPath || !fileName) {
+    return {
+      ok: false,
+      error: "Missing output directory or file name."
+    };
+  }
+
+  const targetPath = await ensureUniqueFilePath(directoryPath, fileName);
+  await fs.writeFile(targetPath, Buffer.from(String(base64Data || ""), "base64"));
+
+  return {
+    ok: true,
+    filePath: targetPath
+  };
+});
+
 ipcMain.handle("desktop:open-file", async () => {
   const result = await dialog.showOpenDialog({
     title: "选择媒体文件",
@@ -503,6 +584,28 @@ ipcMain.handle("desktop:open-file", async () => {
     filePath,
     mimeType: DESKTOP_MIME_TYPES[extension] || "",
     base64Data: fileBuffer.toString("base64")
+  };
+});
+
+ipcMain.handle("desktop:open-files", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Select Media Files",
+    properties: ["openFile", "multiSelections"],
+    filters: getMediaDialogFilters()
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return { canceled: true };
+  }
+
+  const files = [];
+  for (const filePath of result.filePaths) {
+    files.push(await serializeDesktopFile(filePath));
+  }
+
+  return {
+    canceled: false,
+    files
   };
 });
 

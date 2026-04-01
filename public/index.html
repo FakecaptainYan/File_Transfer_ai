@@ -8,14 +8,17 @@
   </head>
   <body>
     <div class="app-shell">
+      <div class="desktop-drag-strip" aria-hidden="true"></div>
       <div class="ambient ambient-one"></div>
       <div class="ambient ambient-two"></div>
 
       <header class="topbar">
-        <div>
+        <div class="topbar-copy">
           <p class="eyebrow">LOCAL MEDIA LAB</p>
           <h1>Media Converter Lab</h1>
-          <p class="subtitle">桌面直接打开即可使用的视频、音频、图片转换与压缩工具。</p>
+          <p class="subtitle">
+            直接在本地批量转换视频、音频和图片。Win 与 Mac 使用同一套桌面工作流。
+          </p>
         </div>
         <div class="status-pill" id="runtime-status">界面加载中...</div>
       </header>
@@ -23,17 +26,31 @@
       <main class="grid">
         <section class="panel hero-panel">
           <div class="hero-copy">
-            <span class="chip">支持 webp -> gif</span>
+            <span class="chip">批量转换</span>
             <span class="chip" id="jxr-chip">JXR 支持检测中</span>
-            <span class="chip">视频转音频</span>
             <span class="chip">本地处理</span>
+            <span class="chip">桌面优先</span>
+          </div>
+
+          <div class="selection-summary">
+            <div>
+              <strong id="batch-count">0 个文件</strong>
+              <p id="batch-summary">未选择文件。单次批量会共用同一组转换设置。</p>
+            </div>
+            <button type="button" class="secondary-button hidden" id="clear-batch-button">清空批次</button>
           </div>
 
           <label class="dropzone" id="dropzone">
-            <input id="file-input" type="file" accept="video/*,audio/*,image/*,.jxr,.wdp,.hdp" hidden />
+            <input
+              id="file-input"
+              type="file"
+              accept="video/*,audio/*,image/*,.jxr,.wdp,.hdp"
+              multiple
+              hidden
+            />
             <div class="drop-icon">+</div>
-            <h2>拖入媒体文件，或点这里选择</h2>
-            <p>支持常见视频、音频、图片格式，桌面版会直接弹出保存位置。</p>
+            <h2>拖入一个或多个媒体文件，或点这里批量选择</h2>
+            <p>同一批次会自动限制为同一媒体类型，方便一次套用同样的输出格式与压缩参数。</p>
             <p class="drop-hint" id="selected-file">尚未选择文件</p>
             <button type="button" class="secondary-button" id="desktop-open-button">选择文件</button>
           </label>
@@ -44,7 +61,17 @@
               <span id="file-size">0 MB</span>
             </div>
             <div class="preview-surface" id="preview-surface">
-              <p>文件预览会显示在这里。</p>
+              <p>当前预览会显示在这里。批量模式下可点击下方队列切换预览文件。</p>
+            </div>
+          </div>
+
+          <div class="queue-card">
+            <div class="section-head">
+              <h2>批量队列</h2>
+              <p id="queue-caption">最多建议一次处理同类型文件，批量体验会更顺手。</p>
+            </div>
+            <div class="queue-list" id="batch-list">
+              <div class="queue-empty">还没有文件进入批量队列。</div>
             </div>
           </div>
         </section>
@@ -52,7 +79,7 @@
         <section class="panel controls-panel">
           <div class="section-head">
             <h2>转换设置</h2>
-            <p>根据文件类型自动推荐操作。</p>
+            <p id="apply-scope">当前设置会应用到本批次所有文件。</p>
           </div>
 
           <div class="field">
@@ -94,14 +121,14 @@
           <div class="progress-card hidden" id="progress-card">
             <div class="spinner"></div>
             <div>
-              <strong>正在处理文件</strong>
-              <p>请稍候，转换完成后会自动下载。</p>
+              <strong id="progress-title">正在处理文件</strong>
+              <p id="progress-text">请稍候，转换完成后会自动保存或下载。</p>
             </div>
           </div>
 
           <div class="message-card" id="message-card">
             <strong>准备就绪</strong>
-            <p>先选择一个媒体文件，系统会自动展示合适的转换选项。</p>
+            <p>先选择一个或多个同类型媒体文件，系统会自动展示合适的转换选项。</p>
           </div>
         </section>
       </main>
@@ -109,25 +136,27 @@
       <section class="panel capability-panel">
         <div class="section-head">
           <h2>内置能力</h2>
-          <p>面向常见工作流做了直接支持。</p>
+          <p>支持单文件快速转换，也支持同类型文件连续批处理。</p>
         </div>
         <div class="capability-grid">
           <article>
             <h3>视频</h3>
-            <p>支持 mp4、mov、mkv、avi、webm 之间转换，以及压缩与提取音频。</p>
+            <p>支持 mp4、mov、mkv、avi、webm 之间互转，以及批量压缩和提取音频。</p>
           </article>
           <article>
             <h3>音频</h3>
-            <p>支持 mp3、wav、aac、m4a、ogg、flac 之间转换与压缩。</p>
+            <p>支持 mp3、wav、aac、m4a、ogg、flac 的连续批量转换与压缩。</p>
           </article>
           <article>
             <h3>图片</h3>
-            <p id="image-capability-copy">支持 jpg、png、webp、gif、bmp、tiff 常见互转，并支持 JXR 输入转换与 webp 转 gif。</p>
+            <p id="image-capability-copy">
+              支持 jpg、png、webp、gif、bmp、tiff 常见互转，并支持 JXR 输入转换与 webp 转 gif。
+            </p>
           </article>
         </div>
       </section>
     </div>
 
-    <script defer src="./app.js?v=media-lab-rename-1"></script>
+    <script defer src="./batch-app.js?v=media-lab-batch-1"></script>
   </body>
 </html>

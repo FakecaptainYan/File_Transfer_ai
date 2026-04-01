@@ -1,6 +1,6 @@
 {
   "name": "media-converter-lab",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A desktop-first local media converter for video, audio and image conversion.",
   "author": "FakecaptainYan",
   "main": "desktop/electron-main.js",
@@ -42,6 +42,16 @@
         "portable",
         "nsis"
       ]
+    },
+    "portable": {
+      "artifactName": "MCL-Portable-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": false,
+      "artifactName": "MCL-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     },
     "mac": {
       "target": [
