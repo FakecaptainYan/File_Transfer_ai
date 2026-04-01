@@ -102,6 +102,11 @@ p {
   margin-bottom: 24px;
 }
 
+.topbar-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .eyebrow {
   margin-bottom: 8px;
   font-size: 13px;
@@ -533,23 +538,36 @@ h1 {
 
 .desktop-shell .desktop-drag-strip {
   display: block;
-  height: 22px;
-  margin-bottom: 2px;
+  height: 42px;
+  margin-bottom: 8px;
+  border-radius: 24px 24px 14px 14px;
   -webkit-app-region: drag;
+  cursor: grab;
 }
 
 .desktop-shell .topbar {
-  padding: 12px 12px 4px 12px;
+  padding: 18px 18px 12px 18px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.38);
+  -webkit-app-region: drag;
+  cursor: grab;
+}
+
+.desktop-shell .topbar-copy,
+.desktop-shell .hero-copy,
+.desktop-shell .selection-summary {
+  -webkit-app-region: drag;
+  cursor: grab;
+}
+
+.desktop-shell .topbar .status-pill,
+.desktop-shell .selection-summary .secondary-button {
+  -webkit-app-region: no-drag;
+  cursor: default;
 }
 
 .desktop-shell.mac-desktop .topbar {
-  padding: 16px 12px 8px 88px;
-  border-radius: 24px;
-  -webkit-app-region: drag;
-}
-
-.desktop-shell.mac-desktop .topbar .status-pill {
-  -webkit-app-region: no-drag;
+  padding: 20px 18px 12px 94px;
 }
 
 .desktop-shell button,
